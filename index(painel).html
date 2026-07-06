@@ -1,0 +1,1056 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel Administrativo - Saneamento</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        @keyframes pulso-live {
+            0% { transform: scale(1); box-shadow: 0 0 6px rgba(16,185,129,0.9); }
+            50% { transform: scale(1.8); box-shadow: 0 0 14px rgba(16,185,129,1); }
+            100% { transform: scale(1); box-shadow: 0 0 6px rgba(16,185,129,0.9); }
+        }
+        .pulso-recebido { animation: pulso-live 0.7s ease-in-out 2; }
+    </style>
+</head>
+<body class="bg-slate-900 text-gray-100 font-sans flex h-screen overflow-hidden selection:bg-[#0056b3]">
+
+    <div id="tela-login" class="fixed inset-0 bg-slate-900 z-50 flex items-center justify-center">
+        <div class="bg-slate-800 p-8 rounded-xl border border-slate-700 shadow-2xl w-96">
+            <h2 class="text-2xl font-bold mb-6 text-center text-white">Acesso Restrito</h2>
+            <div class="mb-4">
+                <label class="block text-xs text-gray-400 uppercase font-semibold mb-1">E-mail do Gestor</label>
+                <input type="email" id="login-email" placeholder="gestor@email.com" class="w-full p-3 rounded bg-slate-950 border border-slate-600 focus:border-[#0056b3] focus:outline-none text-white">
+            </div>
+            <div class="mb-6">
+                <label class="block text-xs text-gray-400 uppercase font-semibold mb-1">Senha</label>
+                <input type="password" id="login-senha" placeholder="••••••••" class="w-full p-3 rounded bg-slate-950 border border-slate-600 focus:border-[#0056b3] focus:outline-none text-white">
+            </div>
+            <button onclick="fazerLogin()" class="w-full bg-[#0056b3] hover:bg-blue-800 text-white font-bold p-3 rounded transition shadow-lg">
+                Entrar no Painel
+            </button>
+        </div>
+    </div>
+
+    <div id="sidebar" class="w-64 bg-slate-800 border-r border-slate-800 flex flex-col hidden shadow-xl z-10 relative">
+        <div class="p-6 border-b border-slate-700">
+            <h1 class="text-xl font-extrabold text-[#0056b3] tracking-wider">GRANDE<span class="text-white">CONSUMIDOR</span></h1>
+            <p id="usuario-logado" class="text-xs text-gray-300 mt-1 truncate">...</p>
+        </div>
+        <nav class="flex-1 p-4 space-y-2">
+            <button onclick="mudarAba('dashboard')" class="w-full text-left px-4 py-3 rounded-lg hover:bg-slate-700 transition flex items-center gap-3 text-sm font-medium focus:bg-slate-700">
+                <i class="fa-solid fa-chart-pie w-5 text-center text-gray-400"></i> Visão Geral
+            </button>
+            <button onclick="mudarAba('atribuir')" class="w-full text-left px-4 py-3 rounded-lg hover:bg-slate-700 transition flex items-center gap-3 text-sm font-medium focus:bg-slate-700">
+                <i class="fa-solid fa-route w-5 text-center text-gray-400"></i> Atribuir Rotas
+            </button>
+            <button onclick="mudarAba('monitoramento')" class="w-full text-left px-4 py-3 rounded-lg hover:bg-slate-700 transition flex items-center gap-3 text-sm font-medium focus:bg-slate-700">
+                <i class="fa-solid fa-satellite-dish w-5 text-center text-gray-400"></i> Monitoramento Real
+            </button>
+            <button onclick="mudarAba('equipe')" class="w-full text-left px-4 py-3 rounded-lg hover:bg-slate-700 transition flex items-center gap-3 text-sm font-medium focus:bg-slate-700">
+                <i class="fa-solid fa-users w-5 text-center text-gray-400"></i> Equipe
+            </button>
+        </nav>
+        <div class="p-4 border-t border-slate-700">
+            <button onclick="fazerLogout()" class="w-full bg-red-600/10 text-red-500 hover:bg-red-600 hover:text-white py-2 rounded font-bold transition text-sm">
+                Sair do Sistema
+            </button>
+        </div>
+    </div>
+
+    <div id="conteudo-principal" class="flex-1 flex flex-col bg-slate-950 hidden relative">
+        <header class="bg-slate-800 h-16 border-b border-slate-700 flex items-center justify-between px-8 shadow">
+            <h2 id="titulo-pagina" class="text-xl font-bold text-white tracking-wide">Visão Geral</h2>
+        </header>
+
+        <main class="flex-1 p-8 overflow-y-auto">
+            
+            <div id="aba-dashboard" class="aba-conteudo block space-y-6">
+                <div class="flex justify-between items-end mb-4">
+                    <p class="text-gray-400 text-sm">Resumo da operação no banco de dados.</p>
+                    <button onclick="carregarEstatisticas()" class="text-xs bg-slate-800 border border-slate-600 hover:bg-slate-700 px-3 py-1.5 rounded transition text-gray-300 shadow">
+                        <i class="fa-solid fa-rotate-right mr-1"></i> Atualizar
+                    </button>
+                </div>
+                
+                <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                    <div class="lg:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-6 h-fit">
+                        <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg relative overflow-hidden">
+                            <div class="absolute -right-4 -top-4 text-slate-700 opacity-30 text-8xl"><i class="fa-solid fa-briefcase"></i></div>
+                            <p class="text-xs text-gray-400 font-bold uppercase tracking-widest relative z-10">Tarefas Ativas</p>
+                            <p class="text-5xl font-extrabold text-white mt-3 relative z-10" id="dash-tarefas">...</p>
+                        </div>
+                        <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg relative overflow-hidden">
+                            <div class="absolute -right-4 -top-4 text-slate-700 opacity-30 text-8xl"><i class="fa-solid fa-clock"></i></div>
+                            <p class="text-xs text-gray-400 font-bold uppercase tracking-widest relative z-10">Leituras Pendentes</p>
+                            <p class="text-5xl font-extrabold text-amber-500 mt-3 relative z-10" id="dash-pendentes">...</p>
+                        </div>
+                        <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg relative overflow-hidden">
+                            <div class="absolute -right-4 -top-4 text-slate-700 opacity-30 text-8xl"><i class="fa-solid fa-check-double"></i></div>
+                            <p class="text-xs text-gray-400 font-bold uppercase tracking-widest relative z-10">Leituras Concluídas</p>
+                            <p class="text-5xl font-extrabold text-emerald-500 mt-3 relative z-10" id="dash-concluidas">...</p>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg flex flex-col justify-center items-center h-full min-h-[200px]">
+                        <p class="text-xs text-gray-400 font-bold uppercase tracking-widest mb-2">Progresso do Roteiro</p>
+                        <div class="relative w-full max-w-[180px] aspect-square flex-1">
+                            <canvas id="grafico-progresso"></canvas>
+                        </div>
+                    </div>
+                </div>
+            
+                <div class="mt-8 bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg">
+                    <h3 class="text-lg font-bold text-white mb-4 border-b border-slate-700 pb-2"><i class="fa-solid fa-power-off text-red-500 mr-2"></i>Ações de Fim de Expediente</h3>
+                    <p class="text-sm text-gray-400 mb-6">Utilize estas opções no final do dia para fazer o backup das rotas concluídas.</p>
+                    
+                    <div class="flex flex-col sm:flex-row gap-4 flex-wrap">
+                        <button id="btn-backup" onclick="baixarBackupZip()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold p-4 rounded-lg transition shadow-lg flex justify-center items-center gap-2">
+                            <i class="fa-solid fa-file-zipper text-xl"></i> 1. Baixar Backup (ZIP)
+                        </button>
+                        
+                        <button id="btn-pendentes" onclick="baixarPendentesExcel()" class="flex-1 bg-amber-600 hover:bg-amber-500 text-white font-bold p-4 rounded-lg transition shadow-lg flex justify-center items-center gap-2">
+                            <i class="fa-solid fa-file-excel text-xl"></i> 2. Baixar Faltantes (Excel)
+                        </button>
+                        
+                        <button id="btn-limpar" onclick="limparServidor()" class="flex-1 bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white border border-red-600 border-dashed font-bold p-4 rounded-lg transition shadow-lg flex justify-center items-center gap-2">
+                            <i class="fa-solid fa-trash-can text-xl"></i> 3. Limpar Nuvem
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="aba-atribuir" class="aba-conteudo hidden max-w-3xl bg-slate-800 p-8 rounded-xl border border-slate-700 shadow-lg">
+                <h3 class="text-xl font-bold text-white mb-6 border-b border-slate-700 pb-2">Criar Nova Tarefa de Leitura</h3>
+                <div class="space-y-6">
+                    <div class="bg-slate-900/50 p-4 rounded-lg border border-slate-700">
+                        <label class="block text-sm text-gray-300 font-semibold mb-2"><i class="fa-solid fa-user-tag text-[#0056b3] mr-2"></i>1. Selecione o Leiturista Responsável</label>
+                        <select id="select-leiturista" class="w-full p-3 rounded bg-slate-950 border border-slate-600 text-white focus:outline-none focus:border-[#0056b3] transition">
+                            <option value="">Carregando Equipe...</option>
+                        </select>
+                    </div>
+                    <div class="bg-slate-900/50 p-4 rounded-lg border border-slate-700">
+                        <label class="block text-sm text-gray-300 font-semibold mb-2"><i class="fa-solid fa-file-excel text-emerald-500 mr-2"></i>2. Importe a Planilha do Roteiro (.xlsx)</label>
+                        <input type="file" id="upload-roteiro" accept=".xlsx" class="w-full p-3 rounded bg-slate-950 border border-slate-600 text-gray-300 cursor-pointer file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-[#0056b3] file:text-white hover:file:bg-blue-800">
+                    </div>
+                    <button id="btn-enviar-rota" onclick="processarEEnviarRota()" class="w-full py-4 bg-[#0056b3] hover:bg-blue-800 font-bold rounded-lg text-white transition shadow-lg flex justify-center items-center gap-2 text-lg">
+                        <i class="fa-solid fa-cloud-arrow-up"></i> Gerar Tarefa e Enviar para Nuvem
+                    </button>
+                </div>
+            </div>
+
+            <div id="aba-monitoramento" class="aba-conteudo hidden space-y-4">
+                <div class="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden shadow-lg flex flex-col min-h-[600px]">
+                    <div class="p-5 border-b border-slate-700 flex flex-col md:flex-row justify-between items-center gap-4">
+                        <div class="flex gap-2 bg-slate-900 p-1 rounded-lg border border-slate-700">
+                            <button id="btn-view-tabela" onclick="alternarVisaoMonitoramento('tabela')" class="px-4 py-2 text-sm font-bold rounded-md bg-[#0056b3] text-white transition-all shadow-sm"><i class="fa-solid fa-table-list mr-1"></i> Tabela</button>
+                            <button id="btn-view-mapa" onclick="alternarVisaoMonitoramento('mapa')" class="px-4 py-2 text-sm font-bold rounded-md text-gray-400 hover:text-white transition-all"><i class="fa-solid fa-map-location-dot mr-1"></i> Mapa Ao Vivo</button>
+                        </div>
+                        
+                        <div class="flex items-center gap-3 w-full md:w-auto">
+                            <div class="flex items-center gap-1.5 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2" title="Atualiza automaticamente quando chegam novas leituras do campo">
+                                <span id="indicador-live" class="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.9)]"></span>
+                                <span class="text-[11px] text-gray-400 font-bold uppercase tracking-wide">Ao Vivo</span>
+                            </div>
+
+                            <select id="filtro-leiturista" onchange="filtrarMonitoramento()" class="px-3 py-2 rounded-lg bg-slate-950 border border-slate-600 text-white text-sm focus:outline-none focus:border-[#0056b3]">
+                                <option value="">Todos os Leituristas</option>
+                            </select>
+                            
+                            <div class="relative flex-1 md:w-64">
+                                <i class="fa-solid fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 text-sm"></i>
+                                <input type="text" id="pesquisa-monitoramento" onkeyup="filtrarMonitoramento()" placeholder="Buscar código ou local..." class="w-full pl-9 pr-3 py-2 rounded-lg bg-slate-950 border border-slate-600 text-white text-sm focus:outline-none focus:border-[#0056b3]">
+                            </div>
+                            <button id="btn-toggle-alertas" onclick="toggleSoAlertas()" class="text-sm bg-slate-700 hover:bg-amber-600 px-4 py-2 rounded-lg text-gray-300 hover:text-white font-bold transition flex items-center gap-2 shadow" title="Mostrar somente leituras com consumo suspeito">
+                                <i class="fa-solid fa-triangle-exclamation"></i> Alertas
+                            </button>
+                            <button onclick="exportarRotaKML()" class="text-sm bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-lg text-white font-bold transition flex items-center gap-2 shadow" title="Exportar KML">
+                                <i class="fa-solid fa-earth-americas"></i> Baixar KML
+                            </button>
+                            <button onclick="carregarLeiturasRecentes()" class="text-sm bg-slate-700 hover:bg-slate-600 w-10 h-10 rounded-lg font-bold transition text-gray-300 shadow flex items-center justify-center" title="Atualizar Dados">
+                                <i class="fa-solid fa-rotate-right"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="barra-acoes-lote" class="hidden bg-slate-700 p-3 flex flex-wrap gap-4 items-center justify-between border-b border-slate-600 shadow-inner">
+                        <div class="flex items-center gap-2">
+                            <span class="bg-amber-500 text-slate-900 text-xs font-bold px-2 py-1 rounded-full" id="qtd-selecionados">0</span>
+                            <span class="text-sm text-white font-semibold tracking-wide">itens selecionados</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <select id="select-bulk-leiturista" class="bg-slate-900 text-white text-sm rounded-lg p-2 border border-slate-600 focus:outline-none focus:border-amber-500">
+                                <option value="">Transferir para outro leiturista...</option>
+                            </select>
+                            <button onclick="reatribuirEmLote()" class="bg-[#0056b3] hover:bg-blue-600 text-white text-sm px-4 py-2 rounded-lg font-bold shadow-sm transition-all flex items-center gap-1">
+                                <i class="fa-solid fa-people-arrows"></i> Mover
+                            </button>
+                            <div class="w-px h-6 bg-slate-500 mx-2"></div>
+                            <button onclick="excluirEmLote()" class="bg-red-500 hover:bg-red-600 text-white text-sm px-4 py-2 rounded-lg font-bold shadow-sm transition-all flex items-center gap-1">
+                                <i class="fa-solid fa-trash-can"></i> Excluir
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="visao-tabela" class="overflow-x-auto flex-1">
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-slate-900 text-gray-400 uppercase text-xs tracking-wider border-b border-slate-700">
+                                <tr>
+                                    <th class="p-4 w-10 text-center"><input type="checkbox" id="check-todos" onchange="selecionarTodosLote()" class="w-4 h-4 rounded bg-slate-800 border-slate-600 cursor-pointer"></th>
+                                    <th class="p-4 font-semibold">Código</th>
+                                    <th class="p-4 font-semibold">Endereço</th>
+                                    <th class="p-4 font-semibold">Leitura / HD</th>
+                                    <th class="p-4 font-semibold text-center">Status</th>
+                                    <th class="p-4 font-semibold text-center">Local</th>
+                                    <th class="p-4 font-semibold text-center">Fotos</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabela-leituras" class="divide-y divide-slate-700 text-gray-300">
+                                <tr>
+                                    <td colspan="7" class="p-8 text-center text-gray-500 italic">Carregando dados da nuvem...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div id="visao-mapa" class="hidden flex-1 relative bg-slate-950 z-0">
+                        <div id="mapa-leaflet" class="absolute inset-0 z-0"></div>
+                    </div>
+
+                </div>
+            </div>
+
+            <div id="aba-equipe" class="aba-conteudo hidden grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow h-fit">
+                    <h3 class="text-base font-bold text-white mb-4 border-b border-slate-700 pb-2">👤 Cadastrar Leiturista</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs text-gray-400 uppercase font-semibold mb-1">Nome Completo</label>
+                            <input type="text" id="reg-nome" class="w-full p-3 rounded bg-slate-950 border border-slate-600 focus:outline-none focus:border-[#0056b3] text-white text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-400 uppercase font-semibold mb-1">Matrícula (6 num)</label>
+                            <input type="text" id="reg-matricula" maxlength="6" class="w-full p-3 rounded bg-slate-950 border border-slate-600 focus:outline-none focus:border-[#0056b3] text-white text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-400 uppercase font-semibold mb-1">Senha App</label>
+                            <input type="password" id="reg-senha" class="w-full p-3 rounded bg-slate-950 border border-slate-600 focus:outline-none focus:border-[#0056b3] text-white text-sm">
+                        </div>
+                        <button onclick="cadastrarLeiturista()" id="btn-cadastrar-leiturista" class="w-full bg-[#0056b3] hover:bg-blue-800 text-white font-bold p-3 rounded transition text-sm shadow">
+                            Cadastrar Funcionário
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow lg:col-span-2">
+                    <h3 class="text-base font-bold text-white mb-4 border-b border-slate-700 pb-2">👥 Equipe de Campo Registrada</h3>
+                    <div class="overflow-hidden rounded-lg border border-slate-700">
+                        <table class="w-full text-left border-collapse text-sm">
+                            <thead>
+                                <tr class="bg-slate-900 text-xs uppercase text-gray-400 tracking-wider border-b border-slate-700">
+                                    <th class="p-4">Nome</th>
+                                    <th class="p-4">Matrícula</th>
+                                    <th class="p-4 text-center">Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabela-equipe-corpo" class="divide-y divide-slate-700 text-gray-300"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <div id="modal-fotos" class="fixed inset-0 bg-slate-900/95 backdrop-blur-sm z-50 hidden flex flex-col justify-center items-center p-6">
+        <div class="bg-slate-800 rounded-xl max-w-4xl w-full p-6 border border-slate-700 shadow-2xl relative">
+            <button onclick="fecharModalFotos()" class="absolute top-4 right-4 w-10 h-10 bg-slate-700 text-gray-300 hover:bg-red-500 hover:text-white rounded-full flex items-center justify-center transition shadow">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+            <h3 class="text-xl font-bold mb-6 text-white border-b border-slate-700 pb-3"><i class="fa-solid fa-camera-retro text-[#0056b3] mr-2"></i>Evidências Fotográficas</h3>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 text-center shadow-inner">
+                    <p class="text-xs font-bold text-amber-400 mb-3 uppercase tracking-widest"><i class="fa-solid fa-1 mr-1"></i> Foto hidro</p>
+                    <div class="h-64 flex items-center justify-center bg-slate-950 rounded border border-slate-800 overflow-hidden">
+                        <img id="visualizador-foto1" src="" alt="Sem foto" class="max-h-full max-w-full object-contain">
+                    </div>
+                </div>
+                <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 text-center shadow-inner">
+                    <p class="text-xs font-bold text-blue-400 mb-3 uppercase tracking-widest"><i class="fa-solid fa-2 mr-1"></i> Foto Imóvel</p>
+                    <div class="h-64 flex items-center justify-center bg-slate-950 rounded border border-slate-800 overflow-hidden">
+                        <img id="visualizador-foto2" src="" alt="Sem foto" class="max-h-full max-w-full object-contain">
+                    </div>
+                </div>
+            </div>
+            <div class="mt-6 text-center">
+                <p id="legenda-fotos" class="text-gray-300 font-mono text-sm inline-block bg-slate-900 px-4 py-2 rounded-lg border border-slate-700"></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+         // CONFIGURAÇÕES SUPABASE
+     // CONFIGURAÇÕES SUPABASE LOCAL
+// Geralmente o Supabase local roda na porta 8000 para a API
+// Antes: 'http://127.0.0.1:8000'
+// Agora: 
+const SUPABASE_URL = '[https://coletor.sanesi.online](https://coletor.sanesi.online)'; // ou http://localhost:8000
+// Pegue a chave 'anon/public' no seu Supabase Studio local (Settings > API)
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE '; 
+
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        let cacheLeiturasRecentes = []; 
+        let cacheNomesTarefas = {}; 
+        let cacheTarefasLeituristas = {};
+
+        // Variáveis para as Integrações
+        let graficoDonut = null;
+        let mapaLeafletObj = null;
+        let grupoMarcadores = null;
+        let canalRealtimeLeituras = null;
+        let timeoutRealtimeDebounce = null;
+        let mostrarSoAlertas = false;
+
+        function mudarAba(nomeAba) {
+            document.querySelectorAll('.aba-conteudo').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`aba-${nomeAba}`).classList.remove('hidden');
+            
+            const titulos = {
+                'dashboard': 'Visão Geral', 'atribuir': 'Atribuir Rotas à Equipe',
+                'monitoramento': 'Monitoramento de Campo (Geolocalizado)', 'equipe': 'Gestão da Equipe'
+            };
+            document.getElementById('titulo-pagina').innerText = titulos[nomeAba];
+
+            if(nomeAba === 'dashboard') carregarEstatisticas();
+            if(nomeAba === 'monitoramento') { carregarLeituristas(); carregarLeiturasRecentes(); iniciarRealtimeMonitoramento(); }
+            else { pararRealtimeMonitoramento(); }
+            if(nomeAba === 'equipe' || nomeAba === 'atribuir') carregarLeituristas();
+        }
+
+        // ---------- SISTEMA DE SESSÃO ----------
+        async function verificarSessao() {
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            if (session) {
+                document.getElementById('tela-login').classList.add('hidden');
+                document.getElementById('sidebar').classList.remove('hidden');
+                document.getElementById('conteudo-principal').classList.remove('hidden');
+                document.getElementById('usuario-logado').innerText = session.user.email;
+                carregarEstatisticas();
+            } else {
+                document.getElementById('tela-login').classList.remove('hidden');
+                document.getElementById('sidebar').classList.add('hidden');
+                document.getElementById('conteudo-principal').classList.add('hidden');
+            }
+        }
+
+        async function fazerLogin() {
+            const email = document.getElementById('login-email').value;
+            const senha = document.getElementById('login-senha').value;
+            const btn = document.querySelector('#tela-login button');
+            btn.innerHTML = 'Conectando...';
+            try {
+                const { error } = await supabaseClient.auth.signInWithPassword({ email, password: senha });
+                if (error) alert("Erro no Login: " + error.message);
+                else verificarSessao();
+            } catch (err) { alert("Erro ao conectar: " + err.message); }
+            finally { btn.innerHTML = 'Entrar no Painel'; }
+        }
+
+        async function fazerLogout() {
+            await supabaseClient.auth.signOut();
+            verificarSessao();
+        }
+
+        // ---------- DASHBOARD & GRÁFICO ----------
+        async function carregarEstatisticas() {
+            try {
+                const { count: countTarefas } = await supabaseClient.from('tarefas').select('*', { count: 'exact', head: true }).eq('status', 'em_andamento');
+                document.getElementById('dash-tarefas').innerText = countTarefas || 0;
+
+                const { count: countPendentes } = await supabaseClient.from('leituras').select('*', { count: 'exact', head: true }).eq('status', 'pendente');
+                document.getElementById('dash-pendentes').innerText = countPendentes || 0;
+
+                const { count: countConcluidas } = await supabaseClient.from('leituras').select('*', { count: 'exact', head: true }).eq('status', 'concluido');
+                document.getElementById('dash-concluidas').innerText = countConcluidas || 0;
+
+                renderizarGrafico(countConcluidas || 0, countPendentes || 0);
+
+            } catch(e) {
+                console.error("Erro ao carregar dashboard", e);
+            }
+        }
+
+        function renderizarGrafico(concluidas, pendentes) {
+            const ctx = document.getElementById('grafico-progresso').getContext('2d');
+            
+            if (graficoDonut) {
+                graficoDonut.destroy();
+            }
+
+            if(concluidas === 0 && pendentes === 0) {
+                pendentes = 1;
+            }
+
+            graficoDonut = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Concluídas', 'Pendentes'],
+                    datasets: [{
+                        data: [concluidas, pendentes],
+                        backgroundColor: ['#10b981', '#f59e0b'],
+                        borderWidth: 0,
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    cutout: '75%'
+                }
+            });
+        }
+
+        // ---------- GESTÃO DE EQUIPE ----------
+        async function carregarLeituristas() {
+            const { data, error } = await supabaseClient.from('perfis').select('*').eq('cargo', 'leiturista');
+            
+            const selectAtribuir = document.getElementById('select-leiturista');
+            const selectBulk = document.getElementById('select-bulk-leiturista'); 
+            const selectFiltro = document.getElementById('filtro-leiturista'); 
+            
+            if (selectAtribuir) {
+                let options = '<option value="">-- Escolha um Leiturista --</option>';
+                let optionsFiltro = '<option value="">Todos os Leituristas</option>';
+                
+                if(data) {
+                    data.forEach(user => {
+                        options += `<option value="${user.id}">${user.nome}</option>`;
+                        optionsFiltro += `<option value="${user.id}">${user.nome}</option>`; 
+                    });
+                }
+                
+                selectAtribuir.innerHTML = options;
+                if(selectBulk) selectBulk.innerHTML = options.replace('-- Escolha um Leiturista --', 'Transferir para outro leiturista...');
+                if(selectFiltro) selectFiltro.innerHTML = optionsFiltro; 
+            }
+
+            const tabelaEquipe = document.getElementById('tabela-equipe-corpo');
+            if (tabelaEquipe && data) {
+                tabelaEquipe.innerHTML = '';
+                data.forEach(user => {
+                    tabelaEquipe.innerHTML += `
+                        <tr class="hover:bg-slate-900 border-b border-slate-700">
+                            <td class="p-4 font-semibold text-white">${user.nome}</td>
+                            <td class="p-4 font-mono text-amber-400">${user.matricula || '-'}</td>
+                            <td class="p-4 text-center"><button onclick="excluirLeiturista('${user.id}')" class="bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white px-3 py-1.5 rounded text-xs font-bold transition shadow-sm border border-red-500/20">Excluir</button></td>
+                        </tr>
+                    `;
+                });
+            }
+        }
+
+        async function excluirLeiturista(id) {
+            if (confirm("ATENÇÃO: Apagar este leiturista?")) {
+                await supabaseClient.from('perfis').delete().eq('id', id);
+                carregarLeituristas();
+            }
+        }
+
+        async function cadastrarLeiturista() {
+            const nome = document.getElementById('reg-nome').value.trim();
+            const matricula = document.getElementById('reg-matricula').value.trim();
+            const senha = document.getElementById('reg-senha').value;
+            if (!nome || !matricula || !senha) return alert("Preencha todos os campos.");
+            
+            const novoId = crypto.randomUUID();
+            await supabaseClient.from('perfis').insert([{ id: novoId, nome, matricula, cargo: 'leiturista', senha_app: senha }]);
+            alert("Sucesso!");
+            document.getElementById('reg-nome').value = ''; document.getElementById('reg-matricula').value = ''; document.getElementById('reg-senha').value = '';
+            carregarLeituristas();
+        }
+
+        // ---------- ATRIBUIR ROTA (CORRIGIDO COM VALIDAÇÃO DE ERRO) ----------
+        async function processarEEnviarRota() {
+            const leituristaId = document.getElementById('select-leiturista').value;
+            const arquivoInput = document.getElementById('upload-roteiro');
+            if (!leituristaId || arquivoInput.files.length === 0) return alert("Preencha leiturista e anexe arquivo.");
+
+            const btn = document.getElementById('btn-enviar-rota');
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processando...';
+            btn.disabled = true;
+
+            const leitor = new FileReader();
+            leitor.onload = async function(e) {
+                try {
+                    const dados = new Uint8Array(e.target.result);
+                    const pastaTrabalho = XLSX.read(dados, { type: 'array' });
+                    const jsonDados = XLSX.utils.sheet_to_json(pastaTrabalho.Sheets[pastaTrabalho.SheetNames[0]], { range: 1, defval: "" });
+
+                    // Criando tarefa - Deixamos o banco cuidar da data para evitar falha em coluna inexistente
+                    const { data: tarefaCriada, error: erroTarefa } = await supabaseClient
+                        .from('tarefas')
+                        .insert([{ leiturista_id: leituristaId, status: 'em_andamento' }])
+                        .select()
+                        .single();
+
+                    if (erroTarefa) {
+                        throw new Error("Erro ao criar tarefa no Supabase: " + erroTarefa.message);
+                    }
+
+                    if (!tarefaCriada) {
+                        throw new Error("Não foi possível recuperar os dados da tarefa gerada.");
+                    }
+
+                    const loteLeituras = jsonDados.filter(linha => linha["Codigo do Fornecimento"]?.toString().trim()).map(linha => ({
+                        tarefa_id: tarefaCriada.id,
+                        leiturista_id: leituristaId,
+                        codigo: linha["Codigo do Fornecimento"].toString(),
+                        endereco: linha["Endereço"] || "-",
+                        hidrometro: linha["Hidrômetro"] || "-",
+                        leitura_anterior: linha["Leitura anterior"] ? parseFloat(linha["Leitura anterior"]) : 0,
+                        status: 'pendente'
+                    }));
+
+                    if (loteLeituras.length === 0) {
+                        throw new Error("Nenhum registro válido encontrado. Certifique-se de que a coluna de códigos se chama exatamente 'Codigo do Fornecimento'.");
+                    }
+
+                    // Inserindo leituras com checagem de retorno de erro explícita
+                    const { error: erroLeituras } = await supabaseClient
+                        .from('leituras')
+                        .insert(loteLeituras);
+
+                    if (erroLeituras) {
+                        throw new Error("Erro ao inserir as leituras no Supabase: " + erroLeituras.message);
+                    }
+
+                    alert(`Sucesso real! Rota criada com ${loteLeituras.length} registros para coleta.`);
+                    arquivoInput.value = ""; 
+                    mudarAba('dashboard');
+                } catch (err) {
+                    console.error(err);
+                    alert("Falha no Upload: " + err.message);
+                } finally {
+                    btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Gerar Tarefa e Enviar para Nuvem';
+                    btn.disabled = false;
+                }
+            };
+            leitor.readAsArrayBuffer(arquivoInput.files[0]);
+        }
+
+        // ---------- MONITORAMENTO & LÓGICA DO MAPA ----------
+        function alternarVisaoMonitoramento(tipo) {
+            const btnTabela = document.getElementById('btn-view-tabela');
+            const btnMapa = document.getElementById('btn-view-mapa');
+            const visaoTabela = document.getElementById('visao-tabela');
+            const visaoMapa = document.getElementById('visao-mapa');
+
+            if (tipo === 'tabela') {
+                btnTabela.className = "px-4 py-2 text-sm font-bold rounded-md bg-[#0056b3] text-white transition-all shadow-sm";
+                btnMapa.className = "px-4 py-2 text-sm font-bold rounded-md text-gray-400 hover:text-white transition-all";
+                visaoTabela.classList.remove('hidden');
+                visaoMapa.classList.add('hidden');
+            } else {
+                btnMapa.className = "px-4 py-2 text-sm font-bold rounded-md bg-[#0056b3] text-white transition-all shadow-sm";
+                btnTabela.className = "px-4 py-2 text-sm font-bold rounded-md text-gray-400 hover:text-white transition-all";
+                visaoTabela.classList.add('hidden');
+                visaoMapa.classList.remove('hidden');
+                
+                setTimeout(() => { if(mapaLeafletObj) mapaLeafletObj.invalidateSize(); }, 200);
+            }
+        }
+
+        function inicializarMapa() {
+            if (!mapaLeafletObj) {
+                mapaLeafletObj = L.map('mapa-leaflet').setView([-14.235, -51.925], 4);
+                
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                    attribution: '© <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+                    subdomains: 'abcd',
+                    maxZoom: 19
+                }).addTo(mapaLeafletObj);
+                
+                grupoMarcadores = L.featureGroup().addTo(mapaLeafletObj);
+            }
+        }
+
+        // ---------- MONITORAMENTO REAL (CORRIGIDO PARA SUCESSO DO BANCO COM DETECÇÃO DE EXCEÇÃO) ----------
+        async function carregarLeiturasRecentes() {
+            document.getElementById('tabela-leituras').innerHTML = '<tr><td colspan="7" class="p-8 text-center text-[#0056b3] font-bold"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Baixando dados...</td></tr>';
+            
+            document.getElementById('check-todos').checked = false;
+            verificarSelecaoEmLote();
+
+            try {
+                const { data: perfis, error: errPerfis } = await supabaseClient.from('perfis').select('id, nome');
+                if (errPerfis) throw errPerfis;
+
+                const mapPerfis = {};
+                if (perfis) perfis.forEach(p => mapPerfis[p.id] = p.nome);
+
+                const { data: tarefas, error: errTarefas } = await supabaseClient.from('tarefas').select('id, leiturista_id');
+                if (errTarefas) throw errTarefas;
+
+                cacheNomesTarefas = {};
+                cacheTarefasLeituristas = {}; 
+                if (tarefas) {
+                    tarefas.forEach(t => {
+                        cacheNomesTarefas[t.id] = mapPerfis[t.leiturista_id] || 'Sem Responsável';
+                        cacheTarefasLeituristas[t.id] = t.leiturista_id; 
+                    });
+                }
+
+                // Correção: Ordenando por 'created_at' que é a coluna padrão do Supabase
+                const { data, error } = await supabaseClient
+                    .from('leituras')
+                    .select('*')
+                    .order('created_at', { ascending: false })
+                    .limit(500);
+                
+                if (error) throw error;
+                
+                cacheLeiturasRecentes = data || []; 
+                await filtrarMonitoramento(); 
+            } catch (err) {
+                console.error(err);
+                alert("Erro ao carregar monitoramento: " + err.message);
+                document.getElementById('tabela-leituras').innerHTML = `<tr><td colspan="7" class="p-8 text-center text-red-500 font-bold">Erro ao buscar dados: ${err.message}</td></tr>`;
+            }
+        }
+
+        function iniciarRealtimeMonitoramento() {
+            if (canalRealtimeLeituras) return;
+            canalRealtimeLeituras = supabaseClient
+                .channel('monitoramento-leituras')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'leituras' }, () => {
+                    piscarIndicadorLive();
+                    clearTimeout(timeoutRealtimeDebounce);
+                    timeoutRealtimeDebounce = setTimeout(() => {
+                        carregarLeiturasRecentes();
+                    }, 1200);
+                })
+                .subscribe();
+        }
+
+        function pararRealtimeMonitoramento() {
+            if (canalRealtimeLeituras) {
+                supabaseClient.removeChannel(canalRealtimeLeituras);
+                canalRealtimeLeituras = null;
+            }
+        }
+
+        function piscarIndicadorLive() {
+            const ponto = document.getElementById('indicador-live');
+            if (!ponto) return;
+            ponto.classList.remove('pulso-recebido');
+            void ponto.offsetWidth; 
+            ponto.classList.add('pulso-recebido');
+        }
+
+        function temAlertaConsumo(item) {
+            if (item.status !== 'concluido') return false;
+            const atual = parseFloat(item.leitura_atual);
+            const anterior = parseFloat(item.leitura_anterior);
+            if (isNaN(atual) || isNaN(anterior) || anterior <= 0) return false;
+            return atual < anterior || atual > anterior * 5;
+        }
+
+        function toggleSoAlertas() {
+            mostrarSoAlertas = !mostrarSoAlertas;
+            const btn = document.getElementById('btn-toggle-alertas');
+            btn.classList.toggle('bg-amber-600', mostrarSoAlertas);
+            btn.classList.toggle('text-white', mostrarSoAlertas);
+            filtrarMonitoramento();
+        }
+
+        function renderizarTabelaMonitoramento(dados) {
+            const tabelaCorpo = document.getElementById('tabela-leituras');
+            
+            if (!dados || dados.length === 0) {
+                tabelaCorpo.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-gray-500 italic">Nenhuma leitura encontrada.</td></tr>';
+                return;
+            }
+            tabelaCorpo.innerHTML = '';
+
+            const gruposPorTarefa = {};
+            dados.forEach(item => {
+                const idTarefa = item.tarefa_id || 'sem_tarefa';
+                if(!gruposPorTarefa[idTarefa]) gruposPorTarefa[idTarefa] = [];
+                gruposPorTarefa[idTarefa].push(item);
+            });
+
+            for (const idTarefa in gruposPorTarefa) {
+                const nomeLeiturista = cacheNomesTarefas[idTarefa] || 'Tarefa Independente';
+                
+                tabelaCorpo.innerHTML += `
+                    <tr class="bg-slate-800 border-b border-slate-700">
+                        <td colspan="7" class="p-3 pl-4 text-[#0056b3] font-bold text-xs uppercase tracking-wider">
+                            <i class="fa-solid fa-clipboard-list mr-2"></i> Rota: <span class="text-white">${nomeLeiturista}</span>
+                        </td>
+                    </tr>
+                `;
+
+                gruposPorTarefa[idTarefa].forEach(item => {
+                    const isConcluido = item.status === 'concluido';
+                    const iconeStatus = isConcluido ? 
+                        '<span class="bg-emerald-500/10 text-emerald-500 px-2 py-1 rounded text-xs font-bold border border-emerald-500/20"><i class="fa-solid fa-check mr-1"></i> OK</span>' : 
+                        '<span class="bg-amber-500/10 text-amber-500 px-2 py-1 rounded text-xs font-bold border border-amber-500/20"><i class="fa-regular fa-clock mr-1"></i> PEND</span>';
+                    
+                    const temCoordenada = item.latitude && item.longitude && item.latitude !== 'erro';
+                    const linkMapa = temCoordenada ? 
+                        `<button onclick="focarNoMapa(${item.latitude}, ${item.longitude})" class="w-8 h-8 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500 hover:text-white flex items-center justify-center transition mx-auto shadow-sm" title="Ver no Mapa Aqui">
+                            <i class="fa-solid fa-map-location-dot"></i>
+                        </button>` : `<span class="text-slate-700 block text-center" title="Sem GPS"><i class="fa-solid fa-location-crosshairs"></i></span>`;
+
+                    const temFoto = item.foto1 || item.foto2;
+                    const btnFoto = temFoto ? 
+                        `<button onclick="abrirModalFotos('${item.id}')" class="w-8 h-8 rounded bg-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-white flex items-center justify-center transition mx-auto shadow-sm" title="Ver Evidências">
+                            <i class="fa-solid fa-camera"></i>
+                        </button>` : `<span class="text-slate-700 block text-center" title="Sem Fotos"><i class="fa-solid fa-image"></i></span>`;
+
+                    const alertaConsumo = temAlertaConsumo(item) ?
+                        `<span class="ml-2 text-[10px] bg-red-500/10 text-red-400 border border-red-500/30 px-1.5 py-0.5 rounded font-bold whitespace-nowrap" title="Consumo fora do padrão: confira o hidrômetro"><i class="fa-solid fa-triangle-exclamation"></i> Verificar</span>` : '';
+
+                    const corLinha = isConcluido ? 'border-l-2 border-emerald-500' : 'border-l-2 border-transparent';
+
+                    tabelaCorpo.innerHTML += `
+                        <tr class="hover:bg-slate-800/50 transition border-b border-slate-700 ${corLinha}">
+                            <td class="p-4 text-center">
+                                <input type="checkbox" value="${item.id}" onchange="verificarSelecaoEmLote()" class="cb-leitura-lote w-4 h-4 rounded bg-slate-900 border-slate-600 cursor-pointer">
+                            </td>
+                            <td class="p-4 font-mono font-bold text-gray-200">${item.codigo}</td>
+                            <td class="p-4 text-xs truncate max-w-[200px]" title="${item.endereco}">${item.endereco}</td>
+                            <td class="p-4">
+                                <span class="font-mono text-white">${item.leitura_atual || '-'}</span>
+                                <span class="text-[10px] text-gray-500 ml-2">HD: ${item.hidrometro}</span>
+                                ${alertaConsumo}
+                                ${item.observacao ? `<p class="text-[10px] text-blue-400 mt-1 truncate max-w-[150px]"><i class="fa-solid fa-comment-dots mr-1"></i>${item.observacao}</p>` : ''}
+                            </td>
+                            <td class="p-4 text-center">${iconeStatus}</td>
+                            <td class="p-4">${linkMapa}</td>
+                            <td class="p-4">${btnFoto}</td>
+                        </tr>
+                    `;
+                });
+            }
+        }
+
+        function atualizarPontosNoMapa(dados) {
+            inicializarMapa();
+            grupoMarcadores.clearLayers();
+
+            const iconeVerde = L.divIcon({ className: 'custom-icon', html: '<div class="w-4 h-4 bg-emerald-500 rounded-full border-2 border-white shadow-[0_0_10px_rgba(16,185,129,0.8)]"></div>' });
+            const iconeLaranja = L.divIcon({ className: 'custom-icon', html: '<div class="w-4 h-4 bg-amber-500 rounded-full border-2 border-white shadow-[0_0_10px_rgba(245,158,11,0.8)]"></div>' });
+
+            let pontosValidos = 0;
+
+            dados.forEach(item => {
+                if(item.latitude && item.longitude && item.latitude !== 'erro') {
+                    pontosValidos++;
+                    const icone = item.status === 'concluido' ? iconeVerde : iconeLaranja;
+                    
+                    const popupHtml = `
+                        <div class="text-sm font-sans p-1 text-slate-800">
+                            <b class="text-[#0056b3]">Código: ${item.codigo}</b><br>
+                            Endereço: ${item.endereco}<br>
+                            HD: ${item.hidrometro}<br>
+                            Leitura: <b class="text-emerald-600">${item.leitura_atual || 'Pendente'}</b>
+                        </div>
+                    `;
+
+                    L.marker([item.latitude, item.longitude], {icon: icone})
+                     .bindPopup(popupHtml)
+                     .addTo(grupoMarcadores);
+                }
+            });
+
+            if (pontosValidos > 0) {
+                mapaLeafletObj.fitBounds(grupoMarcadores.getBounds(), { padding: [50, 50] });
+            }
+        }
+
+        function focarNoMapa(lat, lng) {
+            alternarVisaoMonitoramento('mapa');
+            mapaLeafletObj.setView([lat, lng], 18);
+        }
+
+        // ---------- FILTRAR MONITORAMENTO (CORRIGIDO ORDENAÇÃO) ----------
+        async function filtrarMonitoramento() {
+            const termo = document.getElementById('pesquisa-monitoramento').value.toLowerCase();
+            const leituristaSelecionado = document.getElementById('filtro-leiturista').value;
+
+            let filtrados;
+
+            try {
+                if (leituristaSelecionado) {
+                    // Correção de ordenação para created_at
+                    const { data, error } = await supabaseClient
+                        .from('leituras')
+                        .select('*')
+                        .eq('leiturista_id', leituristaSelecionado)
+                        .order('created_at', { ascending: false });
+                    
+                    if (error) throw error;
+                    filtrados = data || [];
+                } else {
+                    filtrados = cacheLeiturasRecentes;
+                }
+
+                if (termo) {
+                    filtrados = filtrados.filter(item =>
+                        (item.codigo && item.codigo.toLowerCase().includes(termo)) ||
+                        (item.endereco && item.endereco.toLowerCase().includes(termo)) ||
+                        (item.hidrometro && item.hidrometro.toLowerCase().includes(termo))
+                    );
+                }
+
+                if (mostrarSoAlertas) {
+                    filtrados = filtrados.filter(temAlertaConsumo);
+                }
+
+                renderizarTabelaMonitoramento(filtrados);
+                atualizarPontosNoMapa(filtrados);
+            } catch (err) {
+                alert("Erro ao filtrar: " + err.message);
+            }
+        }
+
+        // ---------- AÇÕES EM LOTE ----------
+        function selecionarTodosLote() {
+            const checkTodos = document.getElementById('check-todos').checked;
+            const checkboxes = document.querySelectorAll('.cb-leitura-lote');
+            checkboxes.forEach(cb => cb.checked = checkTodos);
+            verificarSelecaoEmLote();
+        }
+
+        function verificarSelecaoEmLote() {
+            const selecionados = document.querySelectorAll('.cb-leitura-lote:checked').length;
+            const painel = document.getElementById('barra-acoes-lote');
+            document.getElementById('qtd-selecionados').innerText = selecionados;
+            
+            if(selecionados > 0) {
+                painel.classList.remove('hidden');
+                painel.classList.add('flex');
+            } else {
+                painel.classList.add('hidden');
+                painel.classList.remove('flex');
+            }
+        }
+
+        function obterIdsSelecionados() {
+            const checkboxes = document.querySelectorAll('.cb-leitura-lote:checked');
+            return Array.from(checkboxes).map(cb => cb.value);
+        }
+
+        async function reatribuirEmLote() {
+            const ids = obterIdsSelecionados();
+            const novoLeituristaId = document.getElementById('select-bulk-leiturista').value;
+            
+            if(!novoLeituristaId) return alert("Selecione o leiturista destino primeiro.");
+            if(!confirm(`Deseja mover ${ids.length} leitura(s) para o novo leiturista? As rotas serão reagrupadas em uma nova tarefa.`)) return;
+
+            try {
+                const { data: novaTarefa } = await supabaseClient.from('tarefas').insert([{ 
+                    leiturista_id: novoLeituristaId, 
+                    status: 'em_andamento' 
+                }]).select().single();
+
+                const { error } = await supabaseClient.from('leituras')
+                    .update({ tarefa_id: novaTarefa.id, leiturista_id: novoLeituristaId })
+                    .in('id', ids);
+                
+                if(error) throw error;
+                
+                alert("Transferência concluída com sucesso!");
+                carregarLeiturasRecentes();
+            } catch(e) {
+                alert("Erro ao reatribuir: " + e.message);
+            }
+        }
+
+        async function excluirEmLote() {
+            const ids = obterIdsSelecionados();
+            if(!confirm(`Atenção: Você vai EXCLUIR DEFINITIVAMENTE ${ids.length} registro(s) do servidor. Confirmar?`)) return;
+
+            try {
+                const { error } = await supabaseClient.from('leituras').delete().in('id', ids);
+                if(error) throw error;
+                
+                alert("Excluídos com sucesso!");
+                carregarLeiturasRecentes();
+            } catch(e) {
+                alert("Erro ao excluir: " + e.message);
+            }
+        }
+
+        // ---------- FOTOS ----------
+        function abrirModalFotos(idLeitura) {
+            const registro = cacheLeiturasRecentes.find(r => r.id == idLeitura); 
+            if(!registro) return;
+
+            document.getElementById('visualizador-foto1').src = registro.foto1 || '';
+            document.getElementById('visualizador-foto2').src = registro.foto2 || '';
+            document.getElementById('legenda-fotos').innerText = `Código: ${registro.codigo} | Hidrômetro: ${registro.hidrometro}`;
+            document.getElementById('modal-fotos').classList.remove('hidden');
+        }
+
+        function fecharModalFotos() {
+            document.getElementById('modal-fotos').classList.add('hidden');
+        }
+
+        // ---------- EXPORTAÇÃO KML, EXCEL, ZIP & LIMPEZA (AJUSTADOS) ----------
+        async function exportarRotaKML() {
+            // Ajustado para usar created_at
+            const { data, error } = await supabaseClient.from('leituras').select('*').eq('status', 'concluido').not('latitude', 'is', null).order('created_at', { ascending: true });
+            if (error || !data || data.length === 0) return alert("Erro ao gerar KML ou sem dados geolocalizados.");
+
+            let kml = `<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>Rota</name><Style id="linhaRota"><LineStyle><color>ff0000ff</color><width>4</width></LineStyle></Style>`;
+            let coordinatesStr = "";
+            data.forEach(item => {
+                if(item.latitude && item.longitude && item.latitude !== 'erro') {
+                    coordinatesStr += `${item.longitude},${item.latitude},0 \n`;
+                    kml += `<Placemark><name>${item.codigo}</name><description><![CDATA[Endereço: ${item.endereco}<br>Leitura: ${item.leitura_atual}]]></description><Point><coordinates>${item.longitude},${item.latitude},0</coordinates></Point></Placemark>`;
+                }
+            });
+            kml += `<Placemark><name>Caminho</name><styleUrl>#linhaRota</styleUrl><LineString><tessellate>1</tessellate><coordinates>${coordinatesStr}</coordinates></LineString></Placemark></Document></kml>`;
+
+            const blob = new Blob([kml], { type: 'application/vnd.google-earth.kml+xml' });
+            const a = document.createElement('a');
+            a.href = window.URL.createObjectURL(blob);
+            a.download = `rota_mapeada.kml`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        async function baixarBackupZip() {
+            try {
+                const btn = document.getElementById('btn-backup');
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-xl"></i> Compactando...';
+                btn.disabled = true;
+
+                const { data: leituras, error } = await supabaseClient.from('leituras').select('*');
+                if (error) throw error;
+                if (!leituras || leituras.length === 0) return alert("Não há dados para backup.");
+
+                const zip = new JSZip();
+                const pastaFotos = zip.folder("Evidencias_Fotograficas");
+
+             const dadosPlanilha = leituras.map(item => {
+                    const hdNome = item.hidrometro ? item.hidrometro.replace(/[^a-zA-Z0-9-]/g, '') : 'SEM_HD';
+                    if (item.foto1 && item.foto1.includes('base64,')) pastaFotos.file(`${item.codigo}_HD-${hdNome}_visor.jpg`, item.foto1.split(',')[1], {base64: true});
+                    if (item.foto2 && item.foto2.includes('base64,')) pastaFotos.file(`${item.codigo}_HD-${hdNome}_imovel.jpg`, item.foto2.split(',')[1], {base64: true});
+
+                    // Modificado para incluir o GPS
+                    return { 
+                        "Código": item.codigo, 
+                        "Endereço": item.endereco, 
+                        "Hidrômetro": item.hidrometro, 
+                        "Leitura Atual": item.leitura_atual || '-', 
+                        "Status": item.status, 
+                        "Latitude": item.latitude || 'Sem GPS',
+                        "Longitude": item.longitude || 'Sem GPS',
+                        "Observação": item.observacao || '-', 
+                        "Data": item.created_at || '-' 
+                    };
+                
+               
+
+                    // Modificado de atualizado_em para created_at
+                    return { "Código": item.codigo, "Endereço": item.endereco, "Hidrômetro": item.hidrometro, "Leitura Atual": item.leitura_atual || '-', "Status": item.status, "Observação": item.observacao || '-', "Data": item.created_at || '-' };
+                });
+
+                const worksheet = XLSX.utils.json_to_sheet(dadosPlanilha);
+                const workbook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(workbook, worksheet, "Leituras Diárias");
+                zip.file("Relatorio_Geral.xlsx", XLSX.write(workbook, { bookType: 'xlsx', type: 'array' }));
+
+                const content = await zip.generateAsync({type:"blob"});
+                const a = document.createElement("a");
+                a.href = window.URL.createObjectURL(content);
+                a.download = `Backup_Leituras.zip`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                
+            } catch (err) { alert("Erro ao gerar backup: " + err.message); } 
+            finally { 
+                const btn = document.getElementById('btn-backup');
+                btn.innerHTML = '<i class="fa-solid fa-file-zipper text-xl"></i> 1. Baixar Backup (ZIP)';
+                btn.disabled = false; 
+            }
+        }
+
+        async function baixarPendentesExcel() {
+            try {
+                const btn = document.getElementById('btn-pendentes');
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-xl"></i> Gerando...';
+                btn.disabled = true;
+
+                const { data: pendentes, error } = await supabaseClient.from('leituras').select('*').eq('status', 'pendente');
+                if (error) throw error;
+                if (!pendentes || pendentes.length === 0) return alert("Maravilha! Todas as leituras foram concluídas.");
+
+                const dadosPlanilha = pendentes.map(item => ({ "Codigo do Fornecimento": item.codigo, "Endereço": item.endereco, "Hidrômetro": item.hidrometro, "Leitura anterior": item.leitura_anterior || "" }));
+                const worksheet = XLSX.utils.json_to_sheet(dadosPlanilha, { origin: "A2" });
+                const workbook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(workbook, worksheet, "Roteiro Pendente");
+                
+                const blob = new Blob([XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+                const a = document.createElement("a");
+                a.href = window.URL.createObjectURL(blob);
+                a.download = `Leituras_Faltantes.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+
+            } catch (err) { alert("Erro: " + err.message); } 
+            finally { 
+                const btn = document.getElementById('btn-pendentes');
+                btn.innerHTML = '<i class="fa-solid fa-file-excel text-xl"></i> 2. Baixar Faltantes (Excel)';
+                btn.disabled = false; 
+            }
+        }
+
+        async function limparServidor() {
+            if (!confirm("⚠️ ATENÇÃO EXTREMA!\nApagar permanentemente TODOS os roteiros do Supabase.\nFez backup?")) return;
+            if (prompt("Digite APAGAR para confirmar") !== "APAGAR") return alert("Cancelado.");
+
+            try {
+                const btn = document.getElementById('btn-limpar');
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-xl"></i> Deletando tudo...';
+                btn.disabled = true;
+
+                await supabaseClient.from('leituras').delete().not('id', 'is', null);
+                await supabaseClient.from('tarefas').delete().not('id', 'is', null);
+                alert("Limpeza concluída! A nuvem está vazia e pronta para amanhã.");
+                carregarEstatisticas(); 
+            } catch (err) { alert("Erro: " + err.message); } 
+            finally {
+                const btn = document.getElementById('btn-limpar');
+                btn.innerHTML = '<i class="fa-solid fa-trash-can text-xl"></i> 3. Limpar Nuvem';
+                btn.disabled = false;
+            }
+        }
+        
+        verificarSessao();
+    </script>
+</body>
+</html>
+
+
+
